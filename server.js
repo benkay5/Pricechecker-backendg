@@ -10,12 +10,16 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// ------------------ DATABASE CONNECTION ------------------
+/* -------------------------------------
+   DATABASE CONNECTION
+-------------------------------------- */
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log("MongoDB connected"))
     .catch(err => console.error("MongoDB Error:", err));
 
-// ------------------ PRICE SCHEMA ------------------
+/* -------------------------------------
+   PRICE SCHEMA + MODEL (Overwrite Safe)
+-------------------------------------- */
 const PriceSchema = new mongoose.Schema({
     item: String,
     price: Number,
@@ -26,10 +30,11 @@ const PriceSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-// Prevent OverwriteModelError
 const Price = mongoose.models.Price || mongoose.model("Price", PriceSchema);
 
-// ------------------ ROUTES ------------------
+/* -------------------------------------
+   ROUTES
+-------------------------------------- */
 
 // Default route
 app.get("/", (req, res) => {
@@ -47,14 +52,14 @@ app.post("/api/prices", async (req, res) => {
     }
 });
 
-// Get raw approved prices
+// Get approved prices (raw)
 app.get("/api/prices", async (req, res) => {
     const item = req.query.item?.toLowerCase();
     const results = await Price.find({ item, approved: true });
     res.json(results);
 });
 
-// Aggregate prices
+// Aggregate price stats
 app.get("/api/aggregate", async (req, res) => {
     const item = req.query.item?.toLowerCase();
 
@@ -73,42 +78,62 @@ app.get("/api/aggregate", async (req, res) => {
     });
 });
 
-// Approve price (Admin)
+// Approve price
 app.post("/api/approve", async (req, res) => {
     try {
-        const id = req.body.id;
-        await Price.findByIdAndUpdate(id, { approved: true });
+        await Price.findByIdAndUpdate(req.body.id, { approved: true });
         res.json({ message: "Price approved" });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// Scraping route
+/* -------------------------------------
+   SCRAPER ROUTE WITH TIMEOUT PROTECTION
+-------------------------------------- */
+
+// Promise timeout wrapper
+function timeoutPromise(ms, message = "Timeout exceeded") {
+    return new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(message)), ms)
+    );
+}
+
 app.get("/api/scrape", async (req, res) => {
     const item = req.query.item?.toLowerCase();
     if (!item) {
         return res.status(400).json({ error: "Item is required" });
     }
 
+    console.log("SCRAPER STARTED for:", item, "at", new Date().toISOString());
+
     try {
-        console.log("Scraping started for:", item);
+        const result = await Promise.race([
+            runAllScrapers(item),
+            timeoutPromise(12000, "Scraper took too long")
+        ]);
 
-        const result = await runAllScrapers(item);
+        console.log("SCRAPER FINISHED for:", item);
 
-        console.log("Scraping done for:", item);
-
-        return res.json({
-            message: "Scraping complete",
+        res.json({
+            success: true,
+            message: "Scraping completed",
             result
         });
+
     } catch (err) {
-        console.error("Scrape error:", err);
-        return res.status(500).json({ error: "Scraping failed or timed out" });
+        console.error("SCRAPER ERROR:", err.message);
+
+        res.json({
+            success: false,
+            error: err.message
+        });
     }
 });
 
-// ------------------ START SERVER ------------------
+/* -------------------------------------
+   START SERVER
+-------------------------------------- */
 const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, () => {
