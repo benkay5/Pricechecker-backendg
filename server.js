@@ -26,8 +26,8 @@ const PriceSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
+// Prevent OverwriteModelError
 const Price = mongoose.models.Price || mongoose.model("Price", PriceSchema);
-
 
 // ------------------ ROUTES ------------------
 
@@ -86,18 +86,25 @@ app.post("/api/approve", async (req, res) => {
 
 // Scraping route
 app.get("/api/scrape", async (req, res) => {
+    const item = req.query.item?.toLowerCase();
+    if (!item) {
+        return res.status(400).json({ error: "Item is required" });
+    }
+
     try {
-        const item = req.query.item?.toLowerCase();
-        if (!item) return res.json({ error: "Item is required" });
+        console.log("Scraping started for:", item);
 
         const result = await runAllScrapers(item);
 
-        res.json({
+        console.log("Scraping done for:", item);
+
+        return res.json({
             message: "Scraping complete",
             result
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Scrape error:", err);
+        return res.status(500).json({ error: "Scraping failed or timed out" });
     }
 });
 
