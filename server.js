@@ -26,7 +26,8 @@ const PriceSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-const Price = mongoose.model("Price", PriceSchema);
+const Price = mongoose.models.Price || mongoose.model("Price", PriceSchema);
+
 
 // ------------------ ROUTES ------------------
 
